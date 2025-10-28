@@ -25,6 +25,7 @@ except errors.DuplicateKeyError:
 
 # -------------------- Helpers -------------------- #
 def clean_document(doc):
+    """Convert ObjectId to string for JSON serialization"""
     doc["_id"] = str(doc["_id"])
     return doc
 
@@ -52,8 +53,7 @@ class Enrollment(BaseModel):
 @app.post("/students")
 def create_student(student: Student):
     try:
-        student_dict = student.model_dump()
-        result = db.students.insert_one(student_dict)
+        result = db.students.insert_one(student.model_dump())
         return {"inserted_id": str(result.inserted_id)}
     except errors.DuplicateKeyError:
         return JSONResponse(status_code=409, content={"detail": "Email already exists"})
@@ -65,7 +65,6 @@ def get_students():
     return [clean_document(s) for s in students]
 
 
-# Define paginated
 @app.get("/students/paginated")
 def paginated_students(page: int = Query(1, ge=1), limit: int = Query(10, ge=1)):
     skip = (page - 1) * limit
@@ -73,11 +72,12 @@ def paginated_students(page: int = Query(1, ge=1), limit: int = Query(10, ge=1))
     return [clean_document(s) for s in students]
 
 
-#  filter route (use regex instead of pattern)
 @app.get("/students/filter")
 def filter_students(
     min_age: int = Query(0, ge=0, description="Minimum age filter"),
-    sort: str = Query("asc", regex="^(asc|desc)$", description="Sort order (asc/desc)"),
+    sort: str = Query(
+        "asc", pattern="^(asc|desc)$", description="Sort order (asc/desc)"
+    ),
 ):
     sort_order = 1 if sort == "asc" else -1
     students = list(
@@ -134,15 +134,16 @@ def get_enrollments():
 # -------------------- Aggregations -------------------- #
 @app.get("/stats/grades")
 def grade_stats():
-    pipeline = [{"group": {"_id": "grade", "count": {"sum": 1}}}]
-    return {doc["_id"]: doc["count"] for doc in db.students.aggregate(pipeline)}
+    pipeline = [{"$group": {"_id": "$grade", "count": {"$sum": 1}}}]
+    result = {doc["_id"]: doc["count"] for doc in db.students.aggregate(pipeline)}
+    return result
 
 
 @app.get("/stats/top-courses")
 def top_courses():
     pipeline = [
-        {"group": {"_id": "course_id", "count": {"sum": 1}}},
-        {"sort": {"count": -1}},
+        {"$group": {"_id": "$course_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
     ]
     return list(db.enrollments.aggregate(pipeline))
 
@@ -152,7 +153,7 @@ def top_courses():
 async def upload_csv(file: bytes):
     df = pd.read_csv(io.BytesIO(file))
     db.students.insert_many(df.to_dict(orient="records"))
-    return {"message": "CSV uploaded"}
+    return {"message": "CSV uploaded successfully"}
 
 
 @app.get("/students/export")
@@ -225,7 +226,7 @@ async def log_requests(request: Request, call_next):
 
 # -------------------- Cookies -------------------- #
 @app.get("/welcome")
-def welcome(name: str):
+def welcome(name: str = Query(None)):
     if not name:
         return {"message": "Hello, guest!"}
     return {"message": f"Welcome back, {name}!"}
