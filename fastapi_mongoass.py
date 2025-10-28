@@ -9,10 +9,10 @@ import pandas as pd
 import io
 from datetime import datetime
 
-# -------------------- FastAPI app -------------------- #
+
 app = FastAPI()
 
-# -------------------- MongoDB -------------------- #
+
 client = MongoClient("mongodb://localhost:27017/")
 db = client["fastapi_db"]
 
@@ -23,14 +23,12 @@ except errors.DuplicateKeyError:
     print("⚠️ Duplicate emails exist, index not created. Clean data before retrying.")
 
 
-# -------------------- Helpers -------------------- #
 def clean_document(doc):
     """Convert ObjectId to string for JSON serialization"""
     doc["_id"] = str(doc["_id"])
     return doc
 
 
-# -------------------- Pydantic Models -------------------- #
 class Student(BaseModel):
     student_id: int
     name: str
@@ -49,7 +47,6 @@ class Enrollment(BaseModel):
     course_id: int
 
 
-# -------------------- Students -------------------- #
 @app.post("/students")
 def create_student(student: Student):
     try:
@@ -107,7 +104,6 @@ def delete_student(student_id: int):
     return {"message": "Student deleted"}
 
 
-# -------------------- Courses -------------------- #
 @app.post("/courses")
 def create_course(course: Course):
     result = db.courses.insert_one(course.model_dump())
@@ -119,7 +115,6 @@ def get_courses():
     return [clean_document(c) for c in db.courses.find()]
 
 
-# -------------------- Enrollments -------------------- #
 @app.post("/enrollments")
 def enroll_student(enrollment: Enrollment):
     result = db.enrollments.insert_one(enrollment.model_dump())
@@ -131,7 +126,6 @@ def get_enrollments():
     return [clean_document(e) for e in db.enrollments.find()]
 
 
-# -------------------- Aggregations -------------------- #
 @app.get("/stats/grades")
 def grade_stats():
     pipeline = [{"$group": {"_id": "$grade", "count": {"$sum": 1}}}]
@@ -148,7 +142,6 @@ def top_courses():
     return list(db.enrollments.aggregate(pipeline))
 
 
-# -------------------- CSV Upload & Export -------------------- #
 @app.post("/upload-csv")
 async def upload_csv(file: bytes):
     df = pd.read_csv(io.BytesIO(file))
@@ -168,7 +161,6 @@ def export_students():
     return response
 
 
-# -------------------- Templates (Form) -------------------- #
 templates = Jinja2Templates(directory="templates")
 
 
@@ -195,7 +187,6 @@ def submit_form(
     return {"message": "Student added from form"}
 
 
-# -------------------- Secure Routes -------------------- #
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
 
@@ -210,7 +201,6 @@ def secure_data(api_key: str = Depends(verify_api_key)):
     return {"message": "This is a secure route"}
 
 
-# -------------------- Middleware -------------------- #
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     db.logs.insert_one(
@@ -224,7 +214,6 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# -------------------- Cookies -------------------- #
 @app.get("/welcome")
 def welcome(name: str = Query(None)):
     if not name:
